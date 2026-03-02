@@ -1,0 +1,17 @@
+{
+  "name": "sleepytofu-plugins",
+  "owner": {
+    "name": "sleepytofu"
+  },
+  "metadata": {
+    "description": "sleepytofu 的 Claude Code plugins"
+  },
+  "plugins": [
+    {
+      "name": "claude-worklog",
+      "source": ".",
+      "description": "自動追蹤 Claude Code 工作時間，每次 git commit 時記錄到 worklog.md",
+      "version": "1.0.0"
+    }
+  ]
+}
