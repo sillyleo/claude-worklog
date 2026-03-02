@@ -11,13 +11,41 @@
 
 ## 安裝
 
-```bash
-# 安裝到全域（所有專案可用）
-claude plugin install ~/Documents/GitHub/claude-worklog --scope user
+### Plugin 安裝
 
-# 或開發測試模式
+```bash
+# 加入 marketplace
+claude plugin marketplace add sillyleo/claude-worklog --scope user
+
+# 安裝 plugin
+claude plugin install claude-worklog@sillyleo-plugins --scope user
+
+# 或開發測試模式（不安裝）
 claude --plugin-dir ~/Documents/GitHub/claude-worklog
 ```
+
+### Status Line（選配）
+
+Plugin 不含 status line（Claude Code 不支援 plugin 貢獻 status line）。如需在底部顯示累積工時計時器，手動設定：
+
+```bash
+# 複製 statusline.sh 到 ~/.claude/
+cp statusline.sh ~/.claude/statusline.sh
+chmod +x ~/.claude/statusline.sh
+```
+
+在 `~/.claude/settings.json` 加入：
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline.sh"
+  }
+}
+```
+
+Status line 會顯示：`user@host ~/project (branch ✓) ⏱12m`
 
 ## 輸出格式
 
@@ -43,6 +71,7 @@ claude --plugin-dir ~/Documents/GitHub/claude-worklog
    - 每次工具使用時更新 heartbeat（間隔 > 2h 視為 idle，不計入工時）
    - 偵測到 `git commit` 指令時，計算累積工時並寫入 `worklog.md`
    - Commit 後重置計時器，下一段工時從此刻開始
+3. **statusline.sh**（選配）：讀取 `.session_activity` 在 status line 顯示即時工時
 
 ## License
 

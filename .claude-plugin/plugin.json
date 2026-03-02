@@ -2,7 +2,7 @@
   "name": "claude-worklog",
   "version": "1.0.0",
   "description": "自動追蹤 Claude Code 工作時間，每次 git commit 時記錄到 worklog.md",
-  "author": { "name": "sleepytofu" },
+  "author": { "name": "sillyleo" },
   "license": "MIT",
   "keywords": ["worklog", "time-tracking", "productivity"]
 }
