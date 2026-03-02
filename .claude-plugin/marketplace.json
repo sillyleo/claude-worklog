@@ -1,10 +1,10 @@
 {
-  "name": "sleepytofu-plugins",
+  "name": "sillyleo-plugins",
   "owner": {
-    "name": "sleepytofu"
+    "name": "sillyleo"
   },
   "metadata": {
-    "description": "sleepytofu 的 Claude Code plugins"
+    "description": "sillyleo 的 Claude Code plugins"
   },
   "plugins": [
     {
