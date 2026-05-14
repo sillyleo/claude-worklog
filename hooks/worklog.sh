@@ -1,14 +1,26 @@
 #!/bin/bash
 # PostToolUse Hook - Heartbeat + Git Commit 偵測
 # 每次工具使用時更新活動追蹤（max idle 2h），偵測 commit 時記錄工時
+# 追蹤資料寫到 ~/Documents/Worklog/<repo-name>/ 而非專案內
 
 set -euo pipefail
 
 MAX_IDLE=7200  # 最大 idle time: 2 hours (秒)
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR}"
-ACTIVITY_FILE="$PROJECT_DIR/.claude/.session_activity"
-WORKLOG_FILE="$PROJECT_DIR/worklog.md"
+
+# 解析 repo-name: 優先 git toplevel basename，fallback PROJECT_DIR basename
+if REPO_ROOT=$(git -C "$PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null); then
+  REPO_NAME=$(basename "$REPO_ROOT")
+else
+  REPO_NAME=$(basename "$PROJECT_DIR")
+fi
+
+WORKLOG_DIR="$HOME/Documents/Worklog/$REPO_NAME"
+ACTIVITY_FILE="$WORKLOG_DIR/.session_activity"
+WORKLOG_FILE="$WORKLOG_DIR/worklog.md"
+
+mkdir -p "$WORKLOG_DIR"
 
 # 讀取 stdin JSON
 INPUT=$(cat)

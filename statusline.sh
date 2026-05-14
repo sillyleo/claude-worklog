@@ -1,6 +1,6 @@
 #!/bin/bash
 # Claude Code Status Line - 顯示 user@host, git info, 累積工時
-# 搭配 claude-worklog plugin 使用，讀取 .session_activity 顯示計時
+# 搭配 claude-worklog plugin 使用，讀取 ~/Documents/Worklog/<repo>/.session_activity 顯示計時
 
 input=$(cat)
 
@@ -22,9 +22,16 @@ if git -C "$cwd" rev-parse --git-dir > /dev/null 2>&1; then
   fi
 fi
 
+# Resolve repo-name 同 hook: git toplevel basename，fallback pdir basename
+if repo_root=$(git -C "$pdir" rev-parse --show-toplevel 2>/dev/null); then
+  repo_name=$(basename "$repo_root")
+else
+  repo_name=$(basename "$pdir")
+fi
+
 # Worktime from session activity
 worktime=""
-af="$pdir/.claude/.session_activity"
+af="$HOME/Documents/Worklog/$repo_name/.session_activity"
 if [ -f "$af" ]; then
   acc=$(cut -d'|' -f4 "$af")
   if [ -n "$acc" ] && [ "$acc" -gt 0 ] 2>/dev/null; then
