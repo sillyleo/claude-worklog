@@ -10,8 +10,8 @@
     {
       "name": "claude-worklog",
       "source": "./",
-      "description": "自動追蹤 Claude Code 工作時間，每次 git commit 時記錄到 worklog.md",
-      "version": "1.0.0"
+      "description": "自動追蹤 Claude Code、Codex 與終端機 commit，記錄到集中式 worklog.md",
+      "version": "1.2.0"
     }
   ]
 }

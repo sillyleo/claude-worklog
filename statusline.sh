@@ -1,8 +1,9 @@
 #!/bin/bash
 # Claude Code Status Line - 顯示 user@host, git info, 累積工時
-# 搭配 claude-worklog plugin 使用，讀取 ~/Documents/Worklog/<repo>/.session_activity 顯示計時
+# 搭配 claude-worklog plugin 使用，優先讀取 task 專屬 activity 顯示計時
 
 input=$(cat)
+worklog_root="${WORKLOG_ROOT:-$HOME/Documents/GitHub/worklog}"
 
 cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd')
 pdir=$(echo "$input" | jq -r '.workspace.project_dir // .workspace.current_dir // .cwd')
@@ -31,7 +32,12 @@ fi
 
 # Worktime from session activity
 worktime=""
-af="$HOME/Documents/Worklog/$repo_name/.session_activity"
+session_id=$(echo "$input" | jq -r '.session_id // .conversation_id // empty')
+session_key=$(printf '%s' "$session_id" | tr -c '[:alnum:]_.-' '_')
+af="$worklog_root/$repo_name/.sessions/$session_key.activity"
+if [ -z "$session_key" ] || [ ! -f "$af" ]; then
+  af="$worklog_root/$repo_name/.session_activity"
+fi
 if [ -f "$af" ]; then
   acc=$(cut -d'|' -f4 "$af")
   if [ -n "$acc" ] && [ "$acc" -gt 0 ] 2>/dev/null; then

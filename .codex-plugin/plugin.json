@@ -1,0 +1,28 @@
+{
+  "name": "claude-worklog",
+  "version": "1.2.0+codex.20260811073619",
+  "description": "\u81ea\u52d5\u8ffd\u8e64 Claude Code\u3001Codex \u8207\u7d42\u7aef\u6a5f commit\uff0c\u8a18\u9304\u5230\u96c6\u4e2d\u5f0f worklog.md",
+  "author": {
+    "name": "sillyleo"
+  },
+  "license": "MIT",
+  "keywords": [
+    "worklog",
+    "time-tracking",
+    "productivity"
+  ],
+  "interface": {
+    "displayName": "Claude Worklog",
+    "shortDescription": "\u81ea\u52d5\u8ffd\u8e64\u5c0d\u8a71\u5de5\u4f5c\u6642\u9593\u4e26\u5728 commit \u6642\u5beb\u5165 worklog.md",
+    "longDescription": "\u8ffd\u8e64 Claude Code \u8207 Codex \u5c0d\u8a71\u671f\u9593\u7684\u6d3b\u52d5\u6642\u9593\uff0c\u6392\u9664\u9577\u6642\u9593 idle\uff0c\u4e26\u900f\u904e Git post-commit \u628a\u6240\u6709 commit \u8a18\u9304\u5230 ~/Documents/GitHub/worklog/<repo-name>/worklog.md\u3002",
+    "developerName": "sillyleo",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "\u958b\u59cb\u8ffd\u8e64\u9019\u500b\u5c08\u6848\u7684\u5de5\u4f5c\u6642\u9593"
+    ]
+  }
+}

@@ -1,18 +1,22 @@
 # claude-worklog
 
-自動追蹤 Claude Code 工作時間的 plugin。每次 git commit 時，自動記錄工時到 `~/Documents/Worklog/<repo-name>/worklog.md`，不污染 repo。
+自動追蹤 Claude Code 與 Codex 工作時間的 plugin。透過 Git `post-commit`，無論 commit 來自 Claude Code、Codex 或一般終端機，都會記錄到 `~/Documents/GitHub/worklog/<repo-name>/worklog.md`，不污染 repo。
 
 ## 功能
 
-- **Session 追蹤**：記錄每次 Claude Code 對話的開始時間
+- **Session 追蹤**：記錄每次 Claude Code 或 Codex 對話的開始時間
+- **並行 task**：同一 repo 內依 Codex task 分開計時，重疊工時會各自寫入與計費
+- **跨日續接**：尚未 commit 的累積工時保留在原對話，隔夜 idle 不計入
 - **Heartbeat**：透過 PostToolUse hook 持續更新活動時間，自動排除超過 2 小時的 idle 時間
-- **Commit 偵測**：偵測到 `git commit` 時，自動將工時記錄寫入 `worklog.md`
+- **Commit 偵測**：透過 Git `post-commit` 自動記錄，不依賴代理工具名稱或指令格式
+- **終端機支援**：專案開啟過一次後，一般終端機執行 `git commit` 也會記錄
+- **既有 hook 相容**：安裝時保留並串接專案原本的 `post-commit`
 - **累積工時**：精確計算實際工作時間（排除 idle），commit 後自動重置計時器
-- **集中存放**：所有專案的工時紀錄統一收在 `~/Documents/Worklog/<repo-name>/`，repo 樹保持乾淨
+- **集中存放**：所有專案的工時紀錄統一收在 `~/Documents/GitHub/worklog/<repo-name>/`，repo 樹保持乾淨
 
 ## 安裝
 
-### Plugin 安裝
+### Claude Code 安裝
 
 ```bash
 # 加入 marketplace
@@ -24,6 +28,17 @@ claude plugin install claude-worklog@sillyleo-plugins --scope user
 # 或開發測試模式（不安裝）
 claude --plugin-dir ~/Documents/GitHub/claude-worklog
 ```
+
+### Codex 安裝
+
+repo 內含 `.codex-plugin/plugin.json`，並支援 Codex 的 hook payload。
+
+```bash
+# 加入 marketplace
+codex plugin marketplace add sillyleo/claude-worklog
+```
+
+加入 marketplace 後，在 Codex App 的 Plugins 頁面啟用 `claude-worklog`。
 
 ### Status Line（選配）
 
@@ -50,7 +65,7 @@ Status line 會顯示：`user@host ~/project (branch ✓) ⏱12m`
 
 ## 輸出格式
 
-工時記錄寫到 `~/Documents/Worklog/<repo-name>/worklog.md`（其中 `<repo-name>` = git toplevel basename，沒 git 就用專案目錄 basename）：
+工時記錄寫到 `~/Documents/GitHub/worklog/<repo-name>/worklog.md`（其中 `<repo-name>` = git toplevel basename，沒 git 就用專案目錄 basename）：
 
 ```markdown
 # Work Log
@@ -67,14 +82,17 @@ Status line 會顯示：`user@host ~/project (branch ✓) ⏱12m`
 
 ## 檔案位置
 
-所有追蹤資料統一放在 `~/Documents/Worklog/<repo-name>/`：
+所有追蹤資料統一放在 `~/Documents/GitHub/worklog/<repo-name>/`：
 
 ```
-~/Documents/Worklog/
+~/Documents/GitHub/worklog/
 ├── smking/
 │   ├── worklog.md
 │   ├── .session_start
-│   └── .session_activity
+│   ├── .session_activity
+│   └── .sessions/
+│       ├── <task-a>.activity
+│       └── <task-b>.activity
 ├── my-other-repo/
 │   └── worklog.md
 └── ...
@@ -84,12 +102,14 @@ Status line 會顯示：`user@host ~/project (branch ✓) ⏱12m`
 
 ## 運作原理
 
-1. **SessionStart** hook：解析 `<repo-name>`、建立 `~/Documents/Worklog/<repo-name>/`、初始化 `.session_activity` 追蹤檔，並一次性 copy 舊位置的歷史紀錄
-2. **PostToolUse** hook：
-   - 每次工具使用時更新 heartbeat（間隔 > 2h 視為 idle，不計入工時）
-   - 偵測到 `git commit` 指令時，計算累積工時並寫入 `worklog.md`
-   - Commit 後重置計時器，下一段工時從此刻開始
-3. **statusline.sh**（選配）：讀取對應 repo 的 `.session_activity` 在 status line 顯示即時工時
+1. **SessionStart** hook：解析 `<repo-name>` 與 task 識別碼、初始化 task 專屬活動追蹤，並安裝 Git `post-commit` wrapper；已存在的 task 計時不會被新 task 或跨日 resume 覆蓋，升級時也會接回識別碼相同的舊版未結算工時
+2. **PostToolUse** hook：每次 Claude Code 或 Codex 使用工具時更新該 task 的 heartbeat（間隔 > 2h 視為 idle，不計入工時，但既有累積工時會保留）
+3. **Git post-commit**：commit 成功後依 `CODEX_THREAD_ID` 取回該 task 的累積時間、寫入 `worklog.md`，再只重置該 task 的計時器
+4. **statusline.sh**（選配）：讀取對應 repo 的 `.session_activity` 在 status line 顯示即時工時
+
+若完全沒有 Claude Code 或 Codex 工作階段可供計時，一般終端機 commit 仍會寫入，但該筆 Duration 會是 `0m`。
+兩個 Codex task 即使時間重疊，只要各自 commit，就會產生兩筆獨立工時；計費工具會分別計入。
+同一個對話可以在未 commit 的狀態下隔天 resume；commit 時會結算該對話跨日保留的累積工時，不會計入隔夜 idle。
 
 ## License
 
