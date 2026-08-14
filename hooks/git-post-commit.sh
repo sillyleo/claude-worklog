@@ -19,6 +19,98 @@ fi
 
 GIT_LOCAL_ENV_VARS=$(git rev-parse --local-env-vars 2>/dev/null || true)
 
+clear_source_git_env() {
+  while IFS= read -r variable; do
+    [ -n "$variable" ] && unset "$variable"
+  done <<< "$GIT_LOCAL_ENV_VARS"
+
+  # hook 不得等待互動式認證或編輯器；失敗時保留本地紀錄，稍後重試。
+  export GIT_TERMINAL_PROMPT=0
+  export GIT_EDITOR=true
+  export GIT_SEQUENCE_EDITOR=true
+}
+
+worklog_current_branch() {
+  git -C "$WORKLOG_ROOT" symbolic-ref --quiet --short HEAD 2>/dev/null
+}
+
+worklog_tracked_tree_is_clean() {
+  git -C "$WORKLOG_ROOT" diff --quiet --ignore-submodules -- &&
+    git -C "$WORKLOG_ROOT" diff --cached --quiet --ignore-submodules --
+}
+
+# 兩台電腦若同時在同一份 worklog.md 尾端新增資料，用 union merge driver
+# 保留雙方列；其他檔案照一般 rebase 規則處理，發生衝突就中止。
+rebase_worklog_onto() (
+  REMOTE_REF="$1"
+  ATTRIBUTES_FILE=$(mktemp "${TMPDIR:-/tmp}/claude-worklog-attributes.XXXXXX") || return 1
+  trap 'rm -f "$ATTRIBUTES_FILE"' EXIT INT TERM
+  printf '%s\n' '**/worklog.md merge=union' > "$ATTRIBUTES_FILE"
+
+  if ! git -c core.hooksPath=/dev/null \
+    -c core.attributesFile="$ATTRIBUTES_FILE" \
+    -C "$WORKLOG_ROOT" rebase "$REMOTE_REF" >/dev/null 2>&1; then
+    git -c core.hooksPath=/dev/null -C "$WORKLOG_ROOT" rebase --abort >/dev/null 2>&1 || true
+    return 1
+  fi
+)
+
+# 寫入前先取得另一台電腦的提交。無 origin、離線、dirty tree 或衝突時
+# 回傳失敗但不阻止本地記錄；絕不 force push、絕不丟棄本地 commit。
+sync_worklog_before_write() (
+  clear_source_git_env
+
+  git -C "$WORKLOG_ROOT" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  BRANCH=$(worklog_current_branch) || return 0
+  git -C "$WORKLOG_ROOT" remote get-url origin >/dev/null 2>&1 || return 0
+  git -C "$WORKLOG_ROOT" fetch -q origin "$BRANCH" >/dev/null 2>&1 || return 1
+
+  REMOTE_REF="refs/remotes/origin/$BRANCH"
+  git -C "$WORKLOG_ROOT" show-ref --verify --quiet "$REMOTE_REF" || return 0
+
+  if git -C "$WORKLOG_ROOT" merge-base --is-ancestor "$REMOTE_REF" HEAD; then
+    return 0
+  fi
+
+  worklog_tracked_tree_is_clean || return 1
+
+  if git -C "$WORKLOG_ROOT" merge-base --is-ancestor HEAD "$REMOTE_REF"; then
+    git -c core.hooksPath=/dev/null -C "$WORKLOG_ROOT" \
+      merge -q --ff-only "$REMOTE_REF"
+    return
+  fi
+
+  rebase_worklog_onto "$REMOTE_REF"
+)
+
+# commit 完成後推送；若另一台剛好搶先，重新 fetch/rebase 後最多重試三次。
+push_worklog_with_retry() (
+  clear_source_git_env
+
+  BRANCH=$(worklog_current_branch) || return 0
+  git -C "$WORKLOG_ROOT" remote get-url origin >/dev/null 2>&1 || return 0
+
+  ATTEMPT=1
+  while [ "$ATTEMPT" -le 3 ]; do
+    if git -C "$WORKLOG_ROOT" push -q origin "HEAD:$BRANCH" >/dev/null 2>&1; then
+      return 0
+    fi
+
+    git -C "$WORKLOG_ROOT" fetch -q origin "$BRANCH" >/dev/null 2>&1 || return 1
+    REMOTE_REF="refs/remotes/origin/$BRANCH"
+    git -C "$WORKLOG_ROOT" show-ref --verify --quiet "$REMOTE_REF" || return 1
+
+    if ! git -C "$WORKLOG_ROOT" merge-base --is-ancestor "$REMOTE_REF" HEAD; then
+      worklog_tracked_tree_is_clean || return 1
+      rebase_worklog_onto "$REMOTE_REF" || return 1
+    fi
+
+    ATTEMPT=$((ATTEMPT + 1))
+  done
+
+  return 1
+)
+
 # 不同 repo 可能同時提交；序列化 Worklog 寫入與自動 commit。
 LOCK_DIR="${TMPDIR:-/tmp}/claude-worklog-${UID:-user}.lock"
 LOCK_ATTEMPTS=0
@@ -47,6 +139,10 @@ cleanup_lock() {
   rmdir "$LOCK_DIR" 2>/dev/null || true
 }
 trap cleanup_lock EXIT INT TERM
+
+if ! sync_worklog_before_write; then
+  printf '%s\n' 'claude-worklog: 無法同步遠端，這筆工時會先安全保留在本機。' >&2
+fi
 
 REPO_NAME=$(basename "$REPO_ROOT")
 WORKLOG_DIR="$WORKLOG_ROOT/$REPO_NAME"
@@ -133,18 +229,21 @@ printf '%s\n' "$COMMIT_HASH" > "$LAST_COMMIT_FILE"
 printf '%s|%s|%s|0\n' "$SESSION_ID" "$NOW_EPOCH" "$NOW_EPOCH" > "$ACTIVITY_FILE"
 printf '%s|%s|%s|0\n' "$SESSION_ID" "$NOW_EPOCH" "$NOW_EPOCH" > "$LEGACY_ACTIVITY_FILE"
 
-# 自動 commit Worklog repo。先清除來源 repo 的 Git 環境，避免 worktree
-# 的 GIT_DIR / GIT_INDEX_FILE 讓 git -C 仍操作到來源 repo。
+# 只提交這次變更的 worklog.md，避免夾帶 Worklog repo 內其他 WIP；
+# 接著安全推送，離線或衝突時保留本地 commit 供下次自動重試。
 (
-  while IFS= read -r variable; do
-    [ -n "$variable" ] && unset "$variable"
-  done <<< "$GIT_LOCAL_ENV_VARS"
+  clear_source_git_env
 
   if git -C "$WORKLOG_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-    git -C "$WORKLOG_ROOT" add -A >/dev/null 2>&1 || true
-    git -c core.hooksPath=/dev/null -C "$WORKLOG_ROOT" \
-      commit -q -m "log: ${REPO_NAME} — ${COMMIT_MSG}" \
-      >/dev/null 2>&1 || true
+    WORKLOG_RELATIVE="$REPO_NAME/worklog.md"
+    git -C "$WORKLOG_ROOT" add -- "$WORKLOG_RELATIVE" >/dev/null 2>&1 || true
+    if git -c core.hooksPath=/dev/null -C "$WORKLOG_ROOT" \
+      commit -q --only -m "log: ${REPO_NAME} — ${COMMIT_MSG}" -- "$WORKLOG_RELATIVE" \
+      >/dev/null 2>&1; then
+      if ! push_worklog_with_retry; then
+        printf '%s\n' 'claude-worklog: 推送失敗，工時 commit 已保留在本機，下次會重試。' >&2
+      fi
+    fi
   fi
 )
 

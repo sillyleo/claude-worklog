@@ -193,7 +193,73 @@ wait "$PID_A"
 wait "$PID_B"
 grep -Fq 'test: concurrent-a' "$WORKLOG_ROOT/concurrent-a/worklog.md"
 grep -Fq 'test: concurrent-b' "$WORKLOG_ROOT/concurrent-b/worklog.md"
-[ -z "$(git -C "$WORKLOG_ROOT" status --short)" ]
+[ -z "$(git -C "$WORKLOG_ROOT" status --short --untracked-files=no)" ]
+
+# 跨電腦同步：遠端較新時先快轉，再記錄並推送本次工時。
+SYNC_REMOTE="$TEST_ROOT/worklog-remote.git"
+SYNC_PEER="$TEST_ROOT/worklog-peer"
+git init -q --bare "$SYNC_REMOTE"
+git -C "$WORKLOG_ROOT" remote add origin "$SYNC_REMOTE"
+git -C "$WORKLOG_ROOT" push -q -u origin main
+git clone -q --branch main "$SYNC_REMOTE" "$SYNC_PEER"
+git -C "$SYNC_PEER" config user.name "Worklog Peer"
+git -C "$SYNC_PEER" config user.email "peer@example.com"
+
+printf 'remote-first\n' > "$SYNC_PEER/remote-first.txt"
+git -C "$SYNC_PEER" add remote-first.txt
+git -C "$SYNC_PEER" commit -q -m 'test: remote first'
+git -C "$SYNC_PEER" push -q origin main
+
+printf '{"session_id":"sync-task"}\n' | \
+  CODEX_THREAD_ID="sync-task" CLAUDE_PROJECT_DIR="$REPO" "$PLUGIN_ROOT/hooks/session-start.sh"
+printf 'sync-first\n' >> "$REPO/tracked.txt"
+git -C "$REPO" add tracked.txt
+CODEX_THREAD_ID="sync-task" git -C "$REPO" commit -q -m 'feat: sync remote first'
+
+[ -f "$WORKLOG_ROOT/remote-first.txt" ]
+git --git-dir="$SYNC_REMOTE" show main:example-repo/worklog.md | \
+  grep -Fq 'feat: sync remote first'
+[ "$(git -C "$WORKLOG_ROOT" rev-parse HEAD)" = "$(git --git-dir="$SYNC_REMOTE" rev-parse main)" ]
+
+# 本地與遠端同時追加同一份 worklog 時，自動合併，不 force push、不遺失任一列。
+printf '| 2026-08-14 | 09:00 | 09:15 | 15m | test: local worklog row |\n' >> "$WORKLOG"
+git -C "$WORKLOG_ROOT" add example-repo/worklog.md
+git -c core.hooksPath=/dev/null -C "$WORKLOG_ROOT" commit -q -m 'test: local worklog row'
+
+git -C "$SYNC_PEER" pull -q --ff-only
+printf '| 2026-08-14 | 09:15 | 09:30 | 15m | test: remote worklog row |\n' >> \
+  "$SYNC_PEER/example-repo/worklog.md"
+git -C "$SYNC_PEER" add example-repo/worklog.md
+git -C "$SYNC_PEER" commit -q -m 'test: remote worklog row'
+git -C "$SYNC_PEER" push -q origin main
+
+printf 'sync-diverged\n' >> "$REPO/tracked.txt"
+git -C "$REPO" add tracked.txt
+CODEX_THREAD_ID="sync-task" git -C "$REPO" commit -q -m 'feat: sync diverged histories'
+
+git --git-dir="$SYNC_REMOTE" show main:example-repo/worklog.md | \
+  grep -Fq 'test: local worklog row'
+git --git-dir="$SYNC_REMOTE" show main:example-repo/worklog.md | \
+  grep -Fq 'test: remote worklog row'
+git --git-dir="$SYNC_REMOTE" show main:example-repo/worklog.md | \
+  grep -Fq 'feat: sync diverged histories'
+
+# 離線時仍保留本地 commit；連線恢復後下一筆會把積欠紀錄一起推上去。
+git -C "$WORKLOG_ROOT" remote set-url origin "$TEST_ROOT/missing-remote.git"
+printf 'sync-offline\n' >> "$REPO/tracked.txt"
+git -C "$REPO" add tracked.txt
+CODEX_THREAD_ID="sync-task" git -C "$REPO" commit -q -m 'feat: keep offline worklog'
+grep -Fq 'feat: keep offline worklog' "$WORKLOG_ROOT/example-repo/worklog.md"
+
+git -C "$WORKLOG_ROOT" remote set-url origin "$SYNC_REMOTE"
+printf 'sync-recovered\n' >> "$REPO/tracked.txt"
+git -C "$REPO" add tracked.txt
+CODEX_THREAD_ID="sync-task" git -C "$REPO" commit -q -m 'feat: push recovered worklog'
+git --git-dir="$SYNC_REMOTE" show main:example-repo/worklog.md | \
+  grep -Fq 'feat: keep offline worklog'
+git --git-dir="$SYNC_REMOTE" show main:example-repo/worklog.md | \
+  grep -Fq 'feat: push recovered worklog'
+[ "$(git -C "$WORKLOG_ROOT" rev-parse HEAD)" = "$(git --git-dir="$SYNC_REMOTE" rev-parse main)" ]
 
 # 專案把 core.hooksPath 放在 working tree 時，不得寫入或污染該路徑。
 CUSTOM_HOOK_REPO="$TEST_ROOT/custom-hook-repo"
