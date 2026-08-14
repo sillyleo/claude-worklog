@@ -17,6 +17,33 @@
 
 ## 安裝
 
+### 交給 Agent 自動安裝
+
+把下面這個 repo 連結直接交給 Agent 即可：
+
+```text
+https://github.com/sillyleo/claude-worklog
+```
+
+Repo 內的 `AGENTS.md` 會要求 Agent 執行安全安裝腳本，自動完成：
+
+- clone 或同步 `~/Documents/GitHub/worklog`
+- 新增或更新 `sillyleo-plugins` marketplace
+- 安裝並啟用 `claude-worklog`
+- 驗證安裝結果
+
+腳本不會覆寫不明目錄或未提交變更；遇到這類情況會停止並交由使用者確認。
+
+手動執行同一套流程：
+
+```bash
+git clone https://github.com/sillyleo/claude-worklog.git
+cd claude-worklog
+bash scripts/install-codex.sh
+```
+
+安裝完成後請開一個新的 Codex task，讓 hook 開始追蹤。
+
 ### Claude Code 安裝
 
 ```bash
@@ -32,23 +59,15 @@ claude --plugin-dir ~/Documents/GitHub/claude-worklog
 
 ### Codex 安裝
 
-repo 內含 `.codex-plugin/plugin.json`，並支援 Codex 的 hook payload。
-
-```bash
-# 加入 marketplace
-codex plugin marketplace add sillyleo/claude-worklog
-```
-
-加入 marketplace 後，在 Codex App 的 Plugins 頁面啟用 `claude-worklog`。
-
-另一台電腦使用前，先把同一個 Worklog repo clone 到固定位置，再安裝並啟用 plugin：
+建議使用上方 `scripts/install-codex.sh`，它會一併處理 Worklog repo 與 plugin。若要分步安裝：
 
 ```bash
 git clone https://github.com/sillyleo/worklog.git ~/Documents/GitHub/worklog
 codex plugin marketplace add sillyleo/claude-worklog
+codex plugin add claude-worklog@sillyleo-plugins
 ```
 
-若目錄已存在，請使用既有 clone，不要再次執行 `git clone`。
+若 Worklog 目錄已存在，請直接執行安裝腳本；它會確認 origin 與未提交變更後再同步，不會重複 clone。
 
 ### Status Line（選配）
 
