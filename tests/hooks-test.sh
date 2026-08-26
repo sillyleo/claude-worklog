@@ -19,6 +19,12 @@ git -C "$WORKLOG_ROOT" init -q -b main
 git -C "$WORKLOG_ROOT" config user.name "Worklog Test"
 git -C "$WORKLOG_ROOT" config user.email "worklog@example.com"
 
+# Worklog 自己不得安裝 post-commit hook，避免自我記錄與遞迴 commit。
+printf '{"session_id":"worklog-self"}\n' | \
+  CODEX_THREAD_ID="worklog-self" CLAUDE_PROJECT_DIR="$WORKLOG_ROOT" \
+  "$PLUGIN_ROOT/hooks/session-start.sh"
+[ ! -e "$WORKLOG_ROOT/.git/hooks/post-commit" ]
+
 mkdir -p "$REPO/.git/hooks"
 cat > "$REPO/.git/hooks/post-commit" <<'EOF'
 #!/bin/sh
@@ -165,6 +171,18 @@ GIT_DIR="$WORKLOG_ROOT/.git" \
   GIT_WORK_TREE="$WORKLOG_ROOT" \
   "$WORKLOG_ROOT/.claude-worklog-post-commit.sh"
 [ "$(git -C "$WORKLOG_ROOT" rev-parse HEAD)" = "$WORKLOG_HEAD_BEFORE" ]
+
+# APFS 上 Github／GitHub 可指向同一目錄；大小寫 alias 也必須辨識為 Worklog 自己。
+WORKLOG_CASE_ALIAS="$HOME/Documents/Github/worklog"
+if [ -e "$WORKLOG_CASE_ALIAS" ] && [ "$WORKLOG_ROOT" -ef "$WORKLOG_CASE_ALIAS" ]; then
+  WORKLOG_HEAD_BEFORE=$(git -C "$WORKLOG_ROOT" rev-parse HEAD)
+  GIT_DIR="$WORKLOG_ROOT/.git" \
+    GIT_WORK_TREE="$WORKLOG_ROOT" \
+    WORKLOG_ROOT="$WORKLOG_CASE_ALIAS" \
+    "$WORKLOG_CASE_ALIAS/.claude-worklog-post-commit.sh"
+  [ "$(git -C "$WORKLOG_ROOT" rev-parse HEAD)" = "$WORKLOG_HEAD_BEFORE" ]
+  [ ! -e "$WORKLOG_ROOT/worklog/worklog.md" ]
+fi
 
 # 兩個 repo 同時觸發 tracker 時，Worklog 寫入與 commit 必須序列化。
 CONCURRENT_A="$TEST_ROOT/concurrent-a"

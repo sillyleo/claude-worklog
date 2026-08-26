@@ -13,7 +13,7 @@ WORKLOG_ROOT="${WORKLOG_ROOT:-$HOME/Documents/GitHub/worklog}"
 mkdir -p "$WORKLOG_ROOT"
 REPO_ROOT_PHYSICAL=$(CDPATH= cd -- "$REPO_ROOT" && pwd -P)
 WORKLOG_ROOT_PHYSICAL=$(CDPATH= cd -- "$WORKLOG_ROOT" && pwd -P)
-if [ "$REPO_ROOT_PHYSICAL" = "$WORKLOG_ROOT_PHYSICAL" ]; then
+if [ "$REPO_ROOT_PHYSICAL" -ef "$WORKLOG_ROOT_PHYSICAL" ]; then
   exit 0
 fi
 

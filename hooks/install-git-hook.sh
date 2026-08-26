@@ -12,6 +12,14 @@ fi
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 WORKLOG_ROOT="${WORKLOG_ROOT:-$HOME/Documents/GitHub/worklog}"
+REPO_ROOT=$(git -C "$PROJECT_DIR" rev-parse --show-toplevel)
+
+# APFS 預設不區分大小寫，但 Bash 的字串比較會區分。用 inode 判斷，
+# 避免 Github／GitHub 等同一路徑別名讓 worklog 安裝自己的 hook。
+if [ -e "$WORKLOG_ROOT" ] && [ "$REPO_ROOT" -ef "$WORKLOG_ROOT" ]; then
+  exit 0
+fi
+
 STABLE_SCRIPT="$WORKLOG_ROOT/.claude-worklog-post-commit.sh"
 HOOKS_DIR=$(git -C "$PROJECT_DIR" rev-parse --path-format=absolute --git-path hooks)
 HOOK_PATH="$HOOKS_DIR/post-commit"
