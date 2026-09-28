@@ -42,6 +42,8 @@ printf '{"session_id":"test-session"}\n' | \
   CODEX_THREAD_ID="task-a" CLAUDE_PROJECT_DIR="$REPO" "$PLUGIN_ROOT/hooks/session-start.sh"
 
 grep -Fq '# claude-worklog managed post-commit wrapper' "$REPO/.git/hooks/post-commit"
+[ -f "$WORKLOG_ROOT/.claude-worklog-activity-state.sh" ]
+cmp "$PLUGIN_ROOT/hooks/activity-state.sh" "$WORKLOG_ROOT/.claude-worklog-activity-state.sh"
 [ "$(find "$REPO/.git/hooks/post-commit.claude-worklog.d" -type f | wc -l | tr -d ' ')" = "1" ]
 
 # 同一個 repo 的兩個 Codex task 各有獨立計時檔。
@@ -90,8 +92,9 @@ grep -Fq '| 1h 0m | feat: task B commit |' "$WORKLOG"
 printf '{"session_id":"overnight-payload"}\n' | \
   CODEX_THREAD_ID="task-overnight" CLAUDE_PROJECT_DIR="$REPO" "$PLUGIN_ROOT/hooks/session-start.sh"
 OVERNIGHT_ACTIVITY="$WORKLOG_DIR/.sessions/task-overnight.activity"
-OLD_START=$((NOW_EPOCH - 90000))
-OLD_LAST_ACTIVITY=$((NOW_EPOCH - 86400))
+# 前一天較晚的鐘點開始，重現「開始時間晚於隔天結束時間」。
+OLD_START=$((NOW_EPOCH - 82500))
+OLD_LAST_ACTIVITY=$((OLD_START + 1800))
 printf 'task-overnight|%s|%s|1800\n' "$OLD_START" "$OLD_LAST_ACTIVITY" > "$OVERNIGHT_ACTIVITY"
 OVERNIGHT_BEFORE_RESUME=$(cat "$OVERNIGHT_ACTIVITY")
 
@@ -115,6 +118,10 @@ printf 'overnight\n' >> "$REPO/tracked.txt"
 git -C "$REPO" add tracked.txt
 CODEX_THREAD_ID="task-overnight" git -C "$REPO" commit -q -m 'feat: overnight commit'
 grep -Fq '| 30m | feat: overnight commit |' "$WORKLOG"
+OVERNIGHT_LINE=$(grep -F 'feat: overnight commit' "$WORKLOG")
+OVERNIGHT_START=$(printf '%s\n' "$OVERNIGHT_LINE" | awk -F'|' '{gsub(/ /, "", $3); print $3}')
+OVERNIGHT_END=$(printf '%s\n' "$OVERNIGHT_LINE" | awk -F'|' '{gsub(/ /, "", $4); print $4}')
+[ "${OVERNIGHT_START/:/}" -le "${OVERNIGHT_END/:/}" ]
 [ "$(cut -d'|' -f4 "$OVERNIGHT_ACTIVITY")" = "0" ]
 [ "$(cut -d'|' -f4 "$NEW_TASK_ACTIVITY")" = "0" ]
 

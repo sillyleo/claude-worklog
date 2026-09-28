@@ -21,6 +21,7 @@ if [ -e "$WORKLOG_ROOT" ] && [ "$REPO_ROOT" -ef "$WORKLOG_ROOT" ]; then
 fi
 
 STABLE_SCRIPT="$WORKLOG_ROOT/.claude-worklog-post-commit.sh"
+STABLE_ACTIVITY_STATE="$WORKLOG_ROOT/.claude-worklog-activity-state.sh"
 HOOKS_DIR=$(git -C "$PROJECT_DIR" rev-parse --path-format=absolute --git-path hooks)
 HOOK_PATH="$HOOKS_DIR/post-commit"
 CHAIN_DIR="$HOOKS_DIR/post-commit.claude-worklog.d"
@@ -36,7 +37,9 @@ esac
 
 mkdir -p "$(dirname -- "$STABLE_SCRIPT")" "$HOOKS_DIR" "$CHAIN_DIR"
 cp "$SCRIPT_DIR/git-post-commit.sh" "$STABLE_SCRIPT"
+cp "$SCRIPT_DIR/activity-state.sh" "$STABLE_ACTIVITY_STATE"
 chmod +x "$STABLE_SCRIPT"
+chmod +x "$STABLE_ACTIVITY_STATE"
 
 # 第一次安裝時，把原有 hook 移入串接目錄，避免覆蓋其他工具的行為
 if [ -f "$HOOK_PATH" ] && ! grep -Fq "$MARKER" "$HOOK_PATH"; then

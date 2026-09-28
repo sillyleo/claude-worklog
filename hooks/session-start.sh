@@ -71,7 +71,7 @@ if [ -f "$ACTIVITY_FILE" ]; then
   exit 0
 fi
 
-TIMESTAMP=$(date '+%s')
+TIMESTAMP="${WORKLOG_NOW_EPOCH:-$(date '+%s')}"
 
 # 寫入 session_start（向後相容）
 echo "${SESSION_ID}|${TIMESTAMP}" > "$SESSION_FILE"
@@ -79,5 +79,6 @@ echo "${SESSION_ID}|${TIMESTAMP}" > "$SESSION_FILE"
 # 寫入 session_activity: session_id|start_epoch|last_activity_epoch|accumulated_seconds
 echo "${SESSION_ID}|${TIMESTAMP}|${TIMESTAMP}|0" > "$ACTIVITY_FILE"
 echo "${SESSION_ID}|${TIMESTAMP}|${TIMESTAMP}|0" > "$LEGACY_ACTIVITY_FILE"
+printf '%s|%s|0\n' "$TIMESTAMP" "$TIMESTAMP" > "$ACTIVITY_FILE.segments"
 
 exit 0

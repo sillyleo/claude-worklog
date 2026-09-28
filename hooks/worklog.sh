@@ -7,6 +7,8 @@ set -euo pipefail
 
 MAX_IDLE=7200  # 最大 idle time: 2 hours (秒)
 WORKLOG_ROOT="${WORKLOG_ROOT:-$HOME/Documents/GitHub/worklog}"
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$SCRIPT_DIR/activity-state.sh"
 
 # 讀取 stdin JSON
 INPUT=$(cat || true)
@@ -36,41 +38,14 @@ WORKLOG_DIR="$WORKLOG_ROOT/$REPO_NAME"
 LEGACY_ACTIVITY_FILE="$WORKLOG_DIR/.session_activity"
 SESSIONS_DIR="$WORKLOG_DIR/.sessions"
 ACTIVITY_FILE="$SESSIONS_DIR/$SESSION_KEY.activity"
+SEGMENTS_FILE="$ACTIVITY_FILE.segments"
 
 mkdir -p "$WORKLOG_DIR" "$SESSIONS_DIR"
 
-NOW_EPOCH=$(date '+%s')
+NOW_EPOCH="${WORKLOG_NOW_EPOCH:-$(date '+%s')}"
 
-# --- Heartbeat: 更新活動追蹤 ---
-ACCUMULATED=0
-START_EPOCH="$NOW_EPOCH"
-LAST_ACTIVITY="$NOW_EPOCH"
-
-if [ -f "$ACTIVITY_FILE" ]; then
-  IFS='|' read -r STORED_SESSION_ID START_EPOCH LAST_ACTIVITY ACCUMULATED < "$ACTIVITY_FILE"
-
-  case "$START_EPOCH" in
-    ''|*[!0-9]*) START_EPOCH="$NOW_EPOCH" ;;
-  esac
-  case "$LAST_ACTIVITY" in
-    ''|*[!0-9]*) LAST_ACTIVITY="$NOW_EPOCH" ;;
-  esac
-  case "$ACCUMULATED" in
-    ''|*[!0-9]*) ACCUMULATED=0 ;;
-  esac
-
-  # 計算距離上次活動的間隔
-  INTERVAL=$((NOW_EPOCH - LAST_ACTIVITY))
-
-  # 如果間隔 < MAX_IDLE，累加到工時；否則 idle time 不計入
-  if [ "$INTERVAL" -ge 0 ] && [ "$INTERVAL" -lt "$MAX_IDLE" ]; then
-    ACCUMULATED=$((ACCUMULATED + INTERVAL))
-  fi
-
-fi
-
-# 更新 task 專屬計時；舊檔只保留給 status line 相容顯示。
-echo "${SESSION_ID}|${START_EPOCH}|${NOW_EPOCH}|${ACCUMULATED}" > "$ACTIVITY_FILE"
-echo "${SESSION_ID}|${START_EPOCH}|${NOW_EPOCH}|${ACCUMULATED}" > "$LEGACY_ACTIVITY_FILE"
+activity_load "$ACTIVITY_FILE" "$SEGMENTS_FILE" "$SESSION_ID" "$NOW_EPOCH"
+activity_record "$NOW_EPOCH" "$MAX_IDLE"
+activity_save "$LEGACY_ACTIVITY_FILE"
 
 exit 0

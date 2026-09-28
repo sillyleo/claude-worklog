@@ -4,6 +4,12 @@
 set -euo pipefail
 
 MAX_IDLE=7200
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ -f "$SCRIPT_DIR/activity-state.sh" ]; then
+  . "$SCRIPT_DIR/activity-state.sh"
+else
+  . "$SCRIPT_DIR/.claude-worklog-activity-state.sh"
+fi
 
 if ! REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null); then
   exit 0
@@ -156,6 +162,7 @@ SESSION_ID="${WORKLOG_SESSION_ID:-${CODEX_THREAD_ID:-${CLAUDE_CODE_SESSION_ID:-$
 SESSION_KEY=$(printf '%s' "$SESSION_ID" | tr -c '[:alnum:]_.-' '_')
 [ -n "$SESSION_KEY" ] || SESSION_KEY="terminal"
 ACTIVITY_FILE="$SESSIONS_DIR/$SESSION_KEY.activity"
+SEGMENTS_FILE="$ACTIVITY_FILE.segments"
 
 mkdir -p "$WORKLOG_DIR" "$SESSIONS_DIR" "$RECORDED_COMMITS_DIR"
 
@@ -173,43 +180,9 @@ if ! mkdir "$COMMIT_MARKER" 2>/dev/null; then
   exit 0
 fi
 
-NOW_EPOCH=$(date '+%s')
-NOW_DATE=$(date '+%Y-%m-%d')
-NOW_TIME=$(date '+%H:%M')
-START_EPOCH="$NOW_EPOCH"
-LAST_ACTIVITY="$NOW_EPOCH"
-ACCUMULATED=0
-
-if [ -f "$ACTIVITY_FILE" ]; then
-  IFS='|' read -r STORED_SESSION_ID START_EPOCH LAST_ACTIVITY ACCUMULATED < "$ACTIVITY_FILE"
-
-  case "$START_EPOCH" in
-    ''|*[!0-9]*) START_EPOCH="$NOW_EPOCH" ;;
-  esac
-  case "$LAST_ACTIVITY" in
-    ''|*[!0-9]*) LAST_ACTIVITY="$NOW_EPOCH" ;;
-  esac
-  case "$ACCUMULATED" in
-    ''|*[!0-9]*) ACCUMULATED=0 ;;
-  esac
-
-  INTERVAL=$((NOW_EPOCH - LAST_ACTIVITY))
-  if [ "$INTERVAL" -ge 0 ] && [ "$INTERVAL" -lt "$MAX_IDLE" ]; then
-    ACCUMULATED=$((ACCUMULATED + INTERVAL))
-  elif [ "$ACCUMULATED" -eq 0 ]; then
-    START_EPOCH="$NOW_EPOCH"
-  fi
-fi
-
-START_TIME=$(date -r "$START_EPOCH" '+%H:%M' 2>/dev/null || date -d "@$START_EPOCH" '+%H:%M' 2>/dev/null || echo "unknown")
-HOURS=$((ACCUMULATED / 3600))
-MINUTES=$(((ACCUMULATED % 3600) / 60))
-
-if [ "$HOURS" -gt 0 ]; then
-  DURATION="${HOURS}h ${MINUTES}m"
-else
-  DURATION="${MINUTES}m"
-fi
+NOW_EPOCH="${WORKLOG_NOW_EPOCH:-$(date '+%s')}"
+activity_load "$ACTIVITY_FILE" "$SEGMENTS_FILE" "$SESSION_ID" "$NOW_EPOCH"
+activity_record "$NOW_EPOCH" "$MAX_IDLE"
 
 COMMIT_MSG=$(git log -1 --pretty=format:'%s' 2>/dev/null || echo "unknown")
 COMMIT_MSG=$(printf '%s' "$COMMIT_MSG" | sed 's/|/\\|/g')
@@ -223,11 +196,9 @@ if [ ! -f "$WORKLOG_FILE" ]; then
 EOF
 fi
 
-printf '| %s | %s | %s | %s | %s |\n' \
-  "$NOW_DATE" "$START_TIME" "$NOW_TIME" "$DURATION" "$COMMIT_MSG" >> "$WORKLOG_FILE"
+activity_write_worklog_rows "$NOW_EPOCH" "$COMMIT_MSG" "$WORKLOG_FILE"
 printf '%s\n' "$COMMIT_HASH" > "$LAST_COMMIT_FILE"
-printf '%s|%s|%s|0\n' "$SESSION_ID" "$NOW_EPOCH" "$NOW_EPOCH" > "$ACTIVITY_FILE"
-printf '%s|%s|%s|0\n' "$SESSION_ID" "$NOW_EPOCH" "$NOW_EPOCH" > "$LEGACY_ACTIVITY_FILE"
+activity_reset "$NOW_EPOCH" "$LEGACY_ACTIVITY_FILE"
 
 # 只提交這次變更的 worklog.md，避免夾帶 Worklog repo 內其他 WIP；
 # 接著安全推送，離線或衝突時保留本地 commit 供下次自動重試。
